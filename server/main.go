@@ -1,11 +1,9 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"net/http"
 
-	"github.com/Knetic/govaluate"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -29,29 +27,7 @@ func initDB() {
 	}
 }
 
-type Calculation struct {
-	gorm.Model
-	ID         string `gorm:"primaryKey" json:"id"`
-	Expression string `json:"expression"`
-	Result     string `json:"result"`
-}
-
-type CalculationRequest struct {
-	Expression string `json:"expression"`
-}
-
-func calculateExpression(expression string) (string, error) {
-	expr, err := govaluate.NewEvaluableExpression(expression)
-	if err != nil {
-		log.Fatal("err", err)
-	}
-	result, err := expr.Evaluate(nil)
-	if err != nil {
-		log.Fatal("err", err)
-	}
-
-	return fmt.Sprintf("%v", result), err
-}
+// Methods - Find, Create, Update, Delete
 
 func getCalculations(ctx echo.Context) error {
 	var calculations []Calculation
@@ -59,6 +35,7 @@ func getCalculations(ctx echo.Context) error {
 	if err := db.Find(&calculations).Error; err != nil {
 		ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "could not get calculations"})
 	}
+	return ctx.JSON(http.StatusOK, calculations)
 }
 
 func postCalculations(ctx echo.Context) error {
@@ -78,7 +55,9 @@ func postCalculations(ctx echo.Context) error {
 		Result:     result,
 	}
 
-	calculations = append(calculations, calc)
+	if err := db.Create(&calc).Error; err != nil {
+		ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "could not add calculation"})
+	}
 	return ctx.JSON(http.StatusOK, calc)
 }
 
@@ -95,30 +74,34 @@ func patchCalculations(ctx echo.Context) error {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid expression"})
 	}
 
-	for i, calculation := range calculations {
-		if calculation.ID == id {
-			calculations[i].Expression = req.Expression
-			calculations[i].Result = result
-
-			return ctx.JSON(http.StatusOK, calculations[i])
-		}
+	var calc Calculation
+	if err := db.Find(&calc, "id=?", id).Error; err != nil {
+		ctx.JSON(http.StatusBadRequest, map[string]string{"error": "Could not find expression"})
 	}
-	return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "calculation not found"})
+
+	calc.Expression = req.Expression
+	calc.Result = result
+
+	if err := db.Save(&calc).Error; err != nil {
+		ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "could not update calculation"})
+	}
+
+	return ctx.JSON(http.StatusOK, calc)
 }
 
 func deleteCalculations(ctx echo.Context) error {
 	id := ctx.Param("id")
 
-	for i, calculation := range calculations {
-		if calculation.ID == id {
-			calculations = append(calculations[:i], calculations[i+1:]...)
-			return ctx.NoContent(http.StatusNoContent)
-		}
+	if err := db.Delete(&Calculation{}, id).Error; err != nil {
+		ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "could not delete calculation"})
+
 	}
-	return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "calculation not found"})
+
+	return ctx.NoContent(http.StatusNoContent)
 }
 
 func main() {
+	initDB()
 
 	e := echo.New()
 
