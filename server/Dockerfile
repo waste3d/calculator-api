@@ -1,18 +1,23 @@
-FROM golang:1.21 AS builder
+# Используем официальный образ Golang
+FROM golang:1.21-alpine
 
+# Устанавливаем рабочую директорию
 WORKDIR /app
 
+# Копируем файлы с зависимостями
 COPY go.mod go.sum ./
+
+# Скачиваем зависимости
 RUN go mod download
 
+# Копируем исходный код
 COPY . .
-RUN go build -o calculator-api
 
+# Собираем приложение
+RUN go build -o main ./server
 
-WORKDIR /app
-
-COPY --from=builder /app/calculator-api .
-
+# Открываем порт
 EXPOSE 8080
 
-CMD ["./calculator-api"]
+# Запускаем приложение
+CMD ["./main"]
